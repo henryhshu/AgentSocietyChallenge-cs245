@@ -96,6 +96,7 @@ def process_yelp_data(input_dir, output_dir):
 
                 # Ensure proper keys for review.json
                 obj["source"] = "yelp"
+                obj["item_id"] = obj.pop("business_id")
 
                 reviews.write(orjson.dumps(obj).decode() + "\n")
     
