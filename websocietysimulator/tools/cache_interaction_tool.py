@@ -21,9 +21,13 @@ class CacheInteractionTool:
         self.env_dir = os.path.join(data_dir, "lmdb_cache")
         os.makedirs(self.env_dir, exist_ok=True)
 
-        self.user_env = lmdb.open(os.path.join(self.env_dir, "users"), map_size=2 * 1024 * 1024 * 1024)
-        self.item_env = lmdb.open(os.path.join(self.env_dir, "items"), map_size=2 * 1024 * 1024 * 1024)
-        self.review_env = lmdb.open(os.path.join(self.env_dir, "reviews"), map_size=8 * 1024 * 1024 * 1024)
+        self.user_env = lmdb.open(os.path.join(self.env_dir, "users"), map_size=4 * 1024 * 1024 * 1024)
+        self.item_env = lmdb.open(os.path.join(self.env_dir, "items"), map_size=8 * 1024 * 1024 * 1024)
+        self.review_env = lmdb.open(os.path.join(self.env_dir, "reviews"), map_size=32 * 1024 * 1024 * 1024)
+
+        self.index_env = lmdb.open(os.path.join(self.env_dir, "review_index"), map_size=8 * 1024 * 1024 * 1024, max_dbs=3)
+        self.user_index = self.index_env.open_db(b"user_index", dupsort=True)
+        self.item_index = self.index_env.open_db(b"item_index", dupsort=True)
 
         # Initialize the database if empty
         self._initialize_db()
@@ -51,29 +55,29 @@ class CacheInteractionTool:
                         )
 
         # Initialize reviews and their indices
-        with self.review_env.begin(write=True) as txn:
-            if not txn.stat()['entries']:
+        with self.review_env.begin(write=True) as review_txn, self.index_env.begin(write=True) as index_txn:
+            if not review_txn.stat()['entries']:
                 for review in tqdm(self._iter_file('review.json')):
                     # Store the review
-                    txn.put(
+                    review_txn.put(
                         review['review_id'].encode(),
                         json.dumps(review).encode()
                     )
 
                     # Update item reviews index (store only review_ids)
-                    item_review_ids = json.loads(txn.get(f"item_{review['item_id']}".encode()) or '[]')
-                    item_review_ids.append(review['review_id'])
-                    txn.put(
-                        f"item_{review['item_id']}".encode(),
-                        json.dumps(item_review_ids).encode()
+                    index_txn.put(
+                        review["user_id"].encode(),
+                        review["review_id"].encode(),
+                        db = self.user_index,
+                        dupdata=True
                     )
 
                     # Update user reviews index (store only review_ids)
-                    user_review_ids = json.loads(txn.get(f"user_{review['user_id']}".encode()) or '[]')
-                    user_review_ids.append(review['review_id'])
-                    txn.put(
-                        f"user_{review['user_id']}".encode(),
-                        json.dumps(user_review_ids).encode()
+                    index_txn.put(
+                        review["item_id"].encode(),
+                        review["review_id"].encode(),
+                        db=self.item_index,
+                        dupdata=True
                     )
 
     def _iter_file(self, filename: str) -> Iterator[Dict]:
@@ -106,7 +110,8 @@ class CacheInteractionTool:
             self,
             item_id: Optional[str] = None,
             user_id: Optional[str] = None,
-            review_id: Optional[str] = None
+            review_id: Optional[str] = None,
+            max_reviews: int = 3
     ) -> List[Dict]:
         """Fetch reviews filtered by various parameters."""
         if review_id:
@@ -116,24 +121,32 @@ class CacheInteractionTool:
                     return [json.loads(review_data)]
             return []
 
-        with self.review_env.begin() as txn:
+        reviews = []
+        with self.review_env.begin() as review_txn, self.index_env.begin() as index_txn:
             if item_id:
-                review_ids = json.loads(txn.get(f"item_{item_id}".encode()) or '[]')
+                cursor = index_txn.cursor(db=self.item_index)
+                key = item_id.encode()
             elif user_id:
-                review_ids = json.loads(txn.get(f"user_{user_id}".encode()) or '[]')
+                cursor = index_txn.cursor(db=self.user_index)
+                key = user_id.encode()
             else:
                 return []
 
             # Fetch complete review data for each review_id
-            reviews = []
-            for rid in review_ids:
-                review_data = txn.get(rid.encode())
-                if review_data:
-                    reviews.append(json.loads(review_data))
-            return reviews
+            if cursor.set_key(key):
+                for rid in cursor.iternext_dup():
+                    rdata = review_txn.get(rid)
+                    if rdata:
+                        reviews.append(json.loads(rdata))
+
+                    if len(reviews) >= max_reviews:
+                        break
+
+        return reviews
 
     def __del__(self):
         """Cleanup LMDB environments on object destruction."""
         self.user_env.close()
         self.item_env.close()
         self.review_env.close()
+        self.index_env.close()
