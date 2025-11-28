@@ -1,7 +1,9 @@
+from dotenv import load_dotenv
+import os
 from websocietysimulator import Simulator
 from websocietysimulator.agent import SimulationAgent
 import json 
-from websocietysimulator.llm import LLMBase, InfinigenceLLM
+from websocietysimulator.llm import LLMBase, OpenAILLM
 from websocietysimulator.agent.modules.planning_modules import PlanningBase 
 from websocietysimulator.agent.modules.reasoning_modules import ReasoningBase
 from websocietysimulator.agent.modules.memory_modules import MemoryDILU
@@ -141,18 +143,23 @@ class MySimulationAgent(SimulationAgent):
             }
 
 if __name__ == "__main__":
+    # Load env variables
+    load_dotenv()
+    data_dir = os.getenv("DATA_DIR")
+    openai_api_key = os.getenv("DEEPSEEK_API_KEY")
+
     # Set the data
-    task_set = "amazon" # "goodreads" or "yelp"
-    simulator = Simulator(data_dir="your data dir", device="gpu", cache=True)
+    task_set = "yelp" # "goodreads" or "yelp"
+    simulator = Simulator(data_dir=data_dir, device="auto", cache=True)
     simulator.set_task_and_groundtruth(task_dir=f"./track1/{task_set}/tasks", groundtruth_dir=f"./track1/{task_set}/groundtruth")
 
     # Set the agent and LLM
     simulator.set_agent(MySimulationAgent)
-    simulator.set_llm(InfinigenceLLM(api_key="your api key"))
+    simulator.set_llm(OpenAILLM(api_key=openai_api_key))
 
     # Run the simulation
     # If you don't set the number of tasks, the simulator will run all tasks.
-    outputs = simulator.run_simulation(number_of_tasks=None, enable_threading=True, max_workers=10)
+    outputs = simulator.run_simulation(number_of_tasks=200, enable_threading=True, max_workers=10)
     
     # Evaluate the agent
     evaluation_results = simulator.evaluate()       

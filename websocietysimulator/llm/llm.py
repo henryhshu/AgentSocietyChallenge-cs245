@@ -111,7 +111,7 @@ class OpenAILLM(LLMBase):
         """
         super().__init__(model)
         self.client = OpenAI(api_key=api_key)
-        self.embedding_model = OpenAIEmbeddings(api_key=api_key)
+        self.embedding_model = OpenAIEmbeddings(api_key=api_key, model="text-embedding-3-small")
         
     def __call__(self, messages: List[Dict[str, str]], model: Optional[str] = None, temperature: float = 0.0, max_tokens: int = 500, stop_strs: Optional[List[str]] = None, n: int = 1) -> Union[str, List[str]]:
         """
