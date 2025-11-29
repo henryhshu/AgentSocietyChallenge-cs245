@@ -1,5 +1,6 @@
 from dotenv import load_dotenv
 import os
+import re
 from websocietysimulator import Simulator
 from websocietysimulator.agent import SimulationAgent
 import json 
@@ -57,6 +58,58 @@ class ReasoningBaseline(ReasoningBase):
         return reasoning_result
 
 
+class ReasoningReviewThenStars(ReasoningBase):
+    """Inherit from ReasoningBase"""
+    
+    def __init__(self, profile_type_prompt, llm):
+        """Initialize the reasoning module"""
+        super().__init__(profile_type_prompt=profile_type_prompt, memory=None, llm=llm)
+        
+    def __call__(self, task_description: str):
+        """Override the parent class's __call__ method"""
+        prompt_base = '''
+        {task_description}'''
+        prompt_base = prompt_base.format(task_description=task_description)
+
+        prompt_review = '''
+        Step 1:Please write a concise review for the business above. Do not include star ratings
+        '''
+
+        prompt_stars = '''
+        Step 2: Based on the review you just wrote, please provide a star rating.
+        '''
+
+        prompt_output = '''
+        Step 3: Please output your review and star rating in the following format:
+        review: [your review text]
+        stars: [your rating from 1.0 to 5.0]
+        '''
+        
+        messages = [
+            {"role": "user", 
+            "content": prompt_base + prompt_review + prompt_stars + prompt_output}
+        ]
+        review_result = self.llm(
+            messages=messages,
+            temperature=0.0,
+            max_tokens=1000
+        )
+        review_result = self.sanitize(review_result)
+        return review_result
+    
+    def sanitize(self, text: str) -> str:
+        """Sanitize the output text to extract review and stars"""
+        review_match = re.search(r'review:\s*(.*)', text, re.IGNORECASE)
+        stars_match = re.search(r'stars:\s*([\d.]+)', text, re.IGNORECASE)
+        
+        review = review_match.group(1).strip() if review_match else ""
+        stars = stars_match.group(1).strip() if stars_match else "0"
+        
+        text_sanitized = "review: {review}\nstars: {stars}"
+        text_sanitized = text_sanitized.format(review=review, stars=stars)
+        return text_sanitized
+
+
 class MySimulationAgent(SimulationAgent):
     """Participant's implementation of SimulationAgent."""
     
@@ -64,7 +117,8 @@ class MySimulationAgent(SimulationAgent):
         """Initialize MySimulationAgent"""
         super().__init__(llm=llm)
         self.planning = PlanningBaseline(llm=self.llm)
-        self.reasoning = ReasoningBaseline(profile_type_prompt='', llm=self.llm)
+        # self.reasoning = ReasoningBaseline(profile_type_prompt='', llm=self.llm)
+        self.reasoning = ReasoningReviewThenStars(profile_type_prompt='', llm=self.llm)
         self.memory = MemoryDILU(llm=self.llm)
         
     def workflow(self):
@@ -93,11 +147,8 @@ class MySimulationAgent(SimulationAgent):
             Write a review for this business: {business}
 
             Others have reviewed this business before: {review_similar}
-
-            Format your response exactly as follows:
-            stars: [your rating]
-            review: [2-4 sentence review, focus on personal experience]
             '''
+            
             result = self.reasoning(task_description)
             
             try:
@@ -127,7 +178,7 @@ if __name__ == "__main__":
     # Load env variables
     load_dotenv()
     data_dir = os.getenv("DATA_DIR")
-    openai_api_key = os.getenv("DEEPSEEK_API_KEY")
+    openai_api_key = os.getenv("OPENAI_API_KEY")
 
     # Set the data
     task_set = "yelp" # "goodreads" or "yelp"
