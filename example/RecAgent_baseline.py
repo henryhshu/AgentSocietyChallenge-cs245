@@ -2,13 +2,15 @@ import json
 from websocietysimulator import Simulator
 from websocietysimulator.agent import RecommendationAgent
 import tiktoken
-from websocietysimulator.llm import LLMBase, InfinigenceLLM
+from websocietysimulator.llm import LLMBase, InfinigenceLLM, OpenAILLM
 from websocietysimulator.agent.modules.planning_modules import PlanningBase
 from websocietysimulator.agent.modules.reasoning_modules import ReasoningBase
 import re
 import logging
 import time
 logging.basicConfig(level=logging.INFO)
+import os
+import dotenv
 
 def num_tokens_from_string(string: str) -> int:
     encoding = tiktoken.get_encoding("cl100k_base")
@@ -164,20 +166,22 @@ class MyRecommendationAgent(RecommendationAgent):
 if __name__ == "__main__":
     task_set = "amazon" # "goodreads" or "yelp"
     # Initialize Simulator
-    simulator = Simulator(data_dir="your data_dir", device="auto", cache=True)
+    simulator = Simulator(data_dir="data", device="auto", cache=True)
 
     # Load scenarios
-    simulator.set_task_and_groundtruth(task_dir=f"./track2/{task_set}/tasks", groundtruth_dir=f"./track2/{task_set}/groundtruth")
-
+    simulator.set_task_and_groundtruth(task_dir=f"example/track2/{task_set}/tasks", groundtruth_dir=f"example/track2/{task_set}/groundtruth")
+    
     # Set your custom agent
     simulator.set_agent(MyRecommendationAgent)
 
     # Set LLM client
-    simulator.set_llm(InfinigenceLLM(api_key="your api_key"))
+    dotenv.load_dotenv()
+    api_key = os.getenv("API_KEY")
+    simulator.set_llm(OpenAILLM(api_key=api_key))
 
     # Run evaluation
     # If you don't set the number of tasks, the simulator will run all tasks.
-    agent_outputs = simulator.run_simulation(number_of_tasks=None, enable_threading=True, max_workers=10)
+    agent_outputs = simulator.run_simulation(number_of_tasks=200, enable_threading=True, max_workers=10)
 
     # Evaluate the agent
     evaluation_results = simulator.evaluate()
