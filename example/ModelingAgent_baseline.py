@@ -1,10 +1,11 @@
 from websocietysimulator import Simulator
 from websocietysimulator.agent import SimulationAgent
 import json 
-from websocietysimulator.llm import LLMBase, InfinigenceLLM
+import os
+from websocietysimulator.llm import LLMBase, GeminiLLM
 from websocietysimulator.agent.modules.planning_modules import PlanningBase 
 from websocietysimulator.agent.modules.reasoning_modules import ReasoningBase
-from websocietysimulator.agent.modules.memory_modules import MemoryDILU
+from websocietysimulator.agent.modules.memory_modules import MemoryHybrid
 import logging
 logging.basicConfig(level=logging.INFO)
 
@@ -63,7 +64,8 @@ class MySimulationAgent(SimulationAgent):
         super().__init__(llm=llm)
         self.planning = PlanningBaseline(llm=self.llm)
         self.reasoning = ReasoningBaseline(profile_type_prompt='', llm=self.llm)
-        self.memory = MemoryDILU(llm=self.llm)
+        #self.memory = MemoryDILU(llm=self.llm)
+        self.memory = MemoryHybrid(llm=self.llm)
         
     def workflow(self):
         """
@@ -142,13 +144,14 @@ class MySimulationAgent(SimulationAgent):
 
 if __name__ == "__main__":
     # Set the data
-    task_set = "amazon" # "goodreads" or "yelp"
-    simulator = Simulator(data_dir="your data dir", device="gpu", cache=True)
-    simulator.set_task_and_groundtruth(task_dir=f"./track1/{task_set}/tasks", groundtruth_dir=f"./track1/{task_set}/groundtruth")
+    task_set = "yelp" # "goodreads" or "yelp"
+    simulator = Simulator(data_dir="data", device="gpu", cache=True)
+    simulator.set_task_and_groundtruth(task_dir=f"example/track1/{task_set}/tasks", groundtruth_dir=f"example/track1/{task_set}/groundtruth")
 
-    # Set the agent and LLM
+    # Set the agent and LLM (use Google Gemini)
     simulator.set_agent(MySimulationAgent)
-    simulator.set_llm(InfinigenceLLM(api_key="your api key"))
+    api_key = os.getenv("MY_API_KEY")
+    simulator.set_llm(GeminiLLM(api_key=api_key, model="gemini-2.5-flash"))
 
     # Run the simulation
     # If you don't set the number of tasks, the simulator will run all tasks.

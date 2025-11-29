@@ -233,3 +233,118 @@ Please fill in this part yourself
         # Add to memory store
         self.scenario_memory.add_documents([doc])
 
+
+class MemoryHybrid(MemoryBase):
+    """Hybrid memory: store short schema-like summaries (Voyager path) and
+    re-rank with a fast generative pass. Retrieval returns a final
+    contracted JSON produced by an LLM using an exemplar + compact digest.
+    """
+    def __init__(self, llm):
+        super().__init__(memory_type='hybrid', llm=llm)
+
+    def _parse_score_and_rationale(self, resp: str):
+        """Parse a LLM response that should contain a line like "Score: <int>" and a short rationale.
+        Returns (score:int, rationale:str). Uses conservative defaults on failure.
+        """
+        default_score = 5
+        if not resp:
+            return default_score, ''
+        lines = [ln.strip() for ln in resp.splitlines() if ln.strip()]
+        score = default_score
+        rationale = ''
+        for i, ln in enumerate(lines):
+            low = ln.lower()
+            if low.startswith('score:'):
+                parts = ln.split(':', 1)
+                if len(parts) > 1:
+                    try:
+                        score = int(parts[1].strip())
+                    except Exception:
+                        score = default_score
+                # rationale may be on same line after score or next non-empty line
+                remainder = parts[1].strip() if len(parts) > 1 else ''
+                if remainder and not remainder.isdigit():
+                    rationale = remainder
+                else:
+                    # pick next line if exists
+                    if i+1 < len(lines):
+                        rationale = lines[i+1]
+                break
+
+        # clamp
+        score = max(0, min(10, score))
+        return score, rationale
+
+    def addMemory(self, current_situation: str):
+        # Ask the LLM for a compact 1-2 line schema summary; fall back to a short truncation
+        prompt = (
+            "Write a 1-2 line compact schema summary of this trajectory. Include aspects (e.g. {food:+,service:-,price:+}), tone, rating_bias (numeric), and dealbreakers.\n\n"
+            "Trajectory:\n"
+        ) + current_situation
+
+        try:
+            summary = self.llm(messages=[{"role": "user", "content": prompt}], temperature=0.1)
+        except Exception:
+            summary = (current_situation.replace('\n', ' ')[:200]).strip()
+
+        doc = Document(
+            page_content=summary,
+            metadata={
+                'schema_summary': summary,
+                'task_trajectory': current_situation
+            }
+        )
+        self.scenario_memory.add_documents([doc])
+
+    def retriveMemory(self, query_scenario: str):
+        task_name = query_scenario
+        if self.scenario_memory._collection.count() == 0:
+            return ''
+
+        # top-k by summary similarity
+        results = self.scenario_memory.similarity_search_with_score(task_name, k=6)
+        candidates = []
+        for res in results:
+            doc = res[0]
+            rerank_prompt = (
+                "Given task (user U, item I, known prefs S), rate usefulness 0-10.\n"
+                "Candidate summary:\n" + doc.page_content + "\n\n"
+                "Ongoing task:\n" + task_name + "\n\n"
+                "Return lines starting with 'Score: <int>' and a one-line rationale."
+            )
+            try:
+                resp = self.llm(messages=[{"role": "user", "content": rerank_prompt}], temperature=0.1)
+            except Exception:
+                resp = ''
+
+            score, rationale = self._parse_score_and_rationale(resp)
+            candidates.append({'doc': doc, 'score': score, 'rationale': rationale})
+
+        if not candidates:
+            return ''
+
+        # sort and pick exemplar and a small set for digest
+        candidates.sort(key=lambda c: c['score'], reverse=True)
+        exemplar_doc = candidates[0]['doc']
+        exemplar = exemplar_doc.metadata.get('task_trajectory', exemplar_doc.page_content)
+
+        # pick up to two additional trajectories for context (keep it small)
+        extra = [c['doc'].metadata.get('task_trajectory', c['doc'].page_content) for c in candidates[1:4]]
+
+        # build digest prompt (compact)
+        digest_prompt = (
+            "Based on the exemplar and the additional short examples, produce a compact JSON with keys: aspects, tone, rating_bias, cautions. Keep it short.\n\n"
+            "Exemplar:\n" + exemplar + "\n\n"
+            "Extras:\n" + "\n\n".join(extra) + "\n\n"
+            "JSON:" 
+        )
+        try:
+            digest_resp = self.llm(messages=[{"role": "user", "content": digest_prompt}], temperature=0.1)
+        except Exception:
+            digest_resp = ''
+
+        # We keep digest generation internally for future use but do not parse
+        # or return structured JSON here to match other memory modules.
+        _ = digest_resp  # digest_resp intentionally unused for now
+        return exemplar
+
