@@ -58,7 +58,7 @@ class ReasoningBaseline(ReasoningBase):
         return reasoning_result
 
 
-class ReasoningReviewThenStars(ReasoningBase):
+class ReasoningStarsThenReview(ReasoningBase):
     """Inherit from ReasoningBase"""
     
     def __init__(self, profile_type_prompt, llm):
@@ -71,12 +71,12 @@ class ReasoningReviewThenStars(ReasoningBase):
         {task_description}'''
         prompt_base = prompt_base.format(task_description=task_description)
 
-        prompt_review = '''
-        Step 1:Please write a concise review for the business above. Do not include star ratings
+        prompt_stars = '''
+        Step 1: Please provide a star rating.
         '''
 
-        prompt_stars = '''
-        Step 2: Based on the review you just wrote, please provide a star rating.
+        prompt_review = '''
+        Step 2: Please write a concise review for the business above.
         '''
 
         prompt_output = '''
@@ -87,7 +87,7 @@ class ReasoningReviewThenStars(ReasoningBase):
         
         messages = [
             {"role": "user", 
-            "content": prompt_base + prompt_review + prompt_stars + prompt_output}
+            "content": prompt_base + prompt_stars + prompt_review + prompt_output}
         ]
         review_result = self.llm(
             messages=messages,
@@ -118,7 +118,7 @@ class MySimulationAgent(SimulationAgent):
         super().__init__(llm=llm)
         self.planning = PlanningBaseline(llm=self.llm)
         # self.reasoning = ReasoningBaseline(profile_type_prompt='', llm=self.llm)
-        self.reasoning = ReasoningReviewThenStars(profile_type_prompt='', llm=self.llm)
+        self.reasoning = ReasoningStarsThenReview(profile_type_prompt='', llm=self.llm)
         self.memory = MemoryDILU(llm=self.llm)
         
     def workflow(self):
