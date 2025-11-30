@@ -26,7 +26,7 @@ class PlanningBaseline(PlanningBase):
                 'tool use instruction': {task_description['user_id']}
             },
             {
-                'description': 'Next, I need to find business information',
+                'description': 'Next, I need to find item information',
                 'reasoning instruction': 'None',
                 'tool use instruction': {task_description['item_id']}
             }
@@ -79,39 +79,40 @@ class MySimulationAgent(SimulationAgent):
             for sub_task in plan:
                 if 'user' in sub_task['description']:
                     user = str(self.interaction_tool.get_user(user_id=self.task['user_id']))
-                elif 'business' in sub_task['description']:
-                    business = str(self.interaction_tool.get_item(item_id=self.task['item_id']))
+                elif 'item' in sub_task['description']:
+                    item = self.interaction_tool.get_item(item_id=self.task['item_id'])
+                    item.pop("images", None)  # Remove images to reduce context size
+                    item.pop("videos", None)  # Remove videos to reduce context size
+                    item = str(item)
             reviews_item = self.interaction_tool.get_reviews(item_id=self.task['item_id'])
             for review in reviews_item:
-                review_text = review['text']
+                review_text = review['title'] + "\n" +review['text']
                 self.memory(f'review: {review_text}')
             reviews_user = self.interaction_tool.get_reviews(user_id=self.task['user_id'])
             review_similar = self.memory(f'{reviews_user[0]["text"]}')
             task_description = f'''
-            You are a real human user on Yelp, a platform for crowd-sourced business reviews. Here is your Yelp profile and review history: {user}
+            You are a real human user on Amazon. Here is your Amazon profile and review history: {user}
 
-            You need to write a review for this business: {business}
+            You need to write a review for this item: {item}
 
-            Others have reviewed this business before: {review_similar}
+            Others have reviewed this item before: {review_similar}
 
             Please analyze the following aspects carefully:
-            1. Based on your user profile and review style, what rating would you give this business? Remember that many users give 5-star ratings for excellent experiences that exceed expectations, and 1-star ratings for very poor experiences that fail to meet basic standards.
-            2. Given the business details and your past experiences, what specific aspects would you comment on? Focus on the positive aspects that make this business stand out or negative aspects that severely impact the experience.
+            1. Based on your user profile and review style, what rating would you give this item? Remember that many users give 5-star ratings for items that exceed expectations in terms of quality, value, and satisfaction, and 1-star ratings for items that do not match description or function poorly.
+            2. Given the item details and your past experiences, what specific aspects would you comment on? Focus on the positive aspects that make this item stand out or negative aspects that severely impact the experience.
             3. Consider how other users might engage with your review in terms of:
-            - Useful: How informative and helpful is your review?
-            - Funny: Does your review have any humorous or entertaining elements?
-            - Cool: Is your review particularly insightful or praiseworthy?
+            - helpful: How informative and helpful is your review?
 
             Requirements:
             - Star rating must be one of: 1.0, 2.0, 3.0, 4.0, 5.0
-            - If the business meets or exceeds expectations in key areas, consider giving a 5-star rating
-            - If the business fails significantly in key areas, consider giving a 1-star rating
+            - If the item meets or exceeds expectations in key areas, consider giving a 5-star rating
+            - If the item fails significantly in key areas, consider giving a 1-star rating
             - Review text should be 2-4 sentences, focusing on your personal experience and emotional response
-            - Useful/funny/cool counts should be non-negative integers that reflect likely user engagement
+            - Helpful counts should be a non-negative integer that reflect likely user engagement
             - Maintain consistency with your historical review style and rating patterns
-            - Focus on specific details about the business rather than generic comments
-            - Be generous with ratings when businesses deliver quality service and products
-            - Be critical when businesses fail to meet basic standards
+            - Focus on specific details about the item rather than generic comments
+            - Be generous with ratings when items deliver quality and value
+            - Be critical when items fail to meet basic standards
 
             Format your response exactly as follows:
             stars: [your rating]
@@ -146,10 +147,10 @@ if __name__ == "__main__":
     # Load env variables
     load_dotenv()
     data_dir = os.getenv("DATA_DIR")
-    openai_api_key = os.getenv("DEEPSEEK_API_KEY")
+    openai_api_key = os.getenv("OPENAI_API_KEY")
 
     # Set the data
-    task_set = "yelp" # "goodreads" or "yelp"
+    task_set = "amazon" # "goodreads" or "yelp"
     simulator = Simulator(data_dir=data_dir, device="auto", cache=True)
     simulator.set_task_and_groundtruth(task_dir=f"./track1/{task_set}/tasks", groundtruth_dir=f"./track1/{task_set}/groundtruth")
 
