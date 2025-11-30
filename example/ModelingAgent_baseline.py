@@ -4,7 +4,7 @@ import json
 from websocietysimulator.llm import LLMBase, InfinigenceLLM
 from websocietysimulator.agent.modules.planning_modules import PlanningBase 
 from websocietysimulator.agent.modules.reasoning_modules import ReasoningBase
-from websocietysimulator.agent.modules.memory_modules import MemoryDILU
+from websocietysimulator.agent.modules.memory_modules import MemoryHybrid
 import logging
 logging.basicConfig(level=logging.INFO)
 
@@ -63,7 +63,8 @@ class MySimulationAgent(SimulationAgent):
         super().__init__(llm=llm)
         self.planning = PlanningBaseline(llm=self.llm)
         self.reasoning = ReasoningBaseline(profile_type_prompt='', llm=self.llm)
-        self.memory = MemoryDILU(llm=self.llm)
+        #self.memory = MemoryDILU(llm=self.llm)
+        self.memory = MemoryHybrid(llm=self.llm)
         
     def workflow(self):
         """
