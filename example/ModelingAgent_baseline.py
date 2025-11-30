@@ -57,6 +57,59 @@ class ReasoningBaseline(ReasoningBase):
         return reasoning_result
 
 
+class ReasoningRefineOnUserReview(ReasoningBase):
+    """Inherit from ReasoningBase"""
+
+    def __init__(self, profile_type_prompt, llm):
+        """Initialize the reasoning module"""
+        super().__init__(profile_type_prompt=profile_type_prompt, memory=None, llm=llm)
+
+    def __call__(self, task_description: str, feedback: str = '', similar_reviews: str = ''):
+        """Override the parent class's __call__ method"""
+        prompt = '''
+{task_description}'''
+        prompt = prompt.format(task_description=task_description)
+
+        messages = [{"role": "user", "content": prompt}]
+        reasoning_result = self.llm(
+            messages=messages,
+            temperature=0.0,
+            max_tokens=1000
+        )
+
+        refined_result = self.refine(
+            previous_result=reasoning_result, 
+            user_review=feedback,
+            similar_reviews=similar_reviews)
+        return refined_result
+
+    def refine(self, previous_result: str, user_review: str, similar_reviews: str = ''):
+        prompt = f'''
+        Here is your previous review: {previous_result}
+        Here are examples of one of your past reviews (your writing style): {user_review}
+        Here are reviews form similar business (memory): {similar_reviews}
+        Please refine the previous output to better match:
+        - the style of the user example,
+        - consistency with similar reviews,
+        - and natural human writing patterns.
+        DO NOT change the meaning dramatically—only adjust tone, detail, and consistency.
+        Format your response exactly as:
+        stars: [1.0–5.0]
+        review: [2–4 sentences]
+        '''
+        prompt = prompt.format(
+            previous_result=previous_result, 
+            user_review=user_review, 
+            similar_reviews=similar_reviews)
+        messages = [{"role": "user", "content": prompt}]
+        refined_result = self.llm(
+            messages=messages,
+            temperature=0.0,
+            max_tokens=1000
+        )
+        return refined_result
+
+
 class MySimulationAgent(SimulationAgent):
     """Participant's implementation of SimulationAgent."""
     
@@ -64,7 +117,7 @@ class MySimulationAgent(SimulationAgent):
         """Initialize MySimulationAgent"""
         super().__init__(llm=llm)
         self.planning = PlanningBaseline(llm=self.llm)
-        self.reasoning = ReasoningBaseline(profile_type_prompt='', llm=self.llm)
+        self.reasoning = ReasoningRefineOnUserReview(profile_type_prompt="", llm=self.llm)
         self.memory = MemoryDILU(llm=self.llm)
         
     def workflow(self):
@@ -101,7 +154,11 @@ class MySimulationAgent(SimulationAgent):
             stars: [your rating]
             review: [your review]
             '''
-            result = self.reasoning(task_description)
+            result = self.reasoning(
+                task_description=task_description,
+                feedback=reviews_user[0]['text'],
+                similar_reviews=review_similar
+            )
             
             try:
                 stars_line = [line for line in result.split('\n') if 'stars:' in line][0]
