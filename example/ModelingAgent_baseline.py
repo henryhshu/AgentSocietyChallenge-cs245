@@ -1,5 +1,6 @@
 from dotenv import load_dotenv
 import os
+import re
 from websocietysimulator import Simulator
 from websocietysimulator.agent import SimulationAgent
 import json 
@@ -57,6 +58,50 @@ class ReasoningBaseline(ReasoningBase):
         return reasoning_result
 
 
+class ReasoningSanitize(ReasoningBase):
+    """Inherit from ReasoningBase"""
+
+    def __init__(self, profile_type_prompt, llm):
+        """Initialize the reasoning module"""
+        super().__init__(profile_type_prompt=profile_type_prompt, memory=None, llm=llm)
+
+    def __call__(self, task_description: str):
+        """Override the parent class's __call__ method"""
+        prompt = '''{task_description}'''
+        prompt = prompt.format(task_description=task_description)
+        messages = [{"role": "user", "content": prompt}]
+        reasoning_result = self.llm(
+            messages=messages,
+            temperature=0.0,
+            max_tokens=500
+        )
+
+        return self.sanitize(reasoning_result)
+
+    def sanitize(self, text: str) -> str:
+        text = text.strip()
+
+        star_match = re.search(r'stars:\s*([0-9](?:\.[0-9])?)', text)
+        if star_match:
+            stars = float(star_match.group(1))
+            if stars < 1.0:
+                stars = 1.0
+            elif stars > 5.0:
+                stars = 5.0
+        else:
+            stars = 4.0
+
+        review_match = re.search(r'review:\s*(.+)', text, re.DOTALL)
+        if review_match:
+            review = review_match.group(1).strip()
+        else:
+            review = "Good experience overall"
+
+        sanitized_output = 'stars: {stars}\nreview: {review}'
+        sanitized_output = sanitized_output.format(stars=stars, review=review)
+        return sanitized_output
+
+
 class MySimulationAgent(SimulationAgent):
     """Participant's implementation of SimulationAgent."""
     
@@ -64,7 +109,7 @@ class MySimulationAgent(SimulationAgent):
         """Initialize MySimulationAgent"""
         super().__init__(llm=llm)
         self.planning = PlanningBaseline(llm=self.llm)
-        self.reasoning = ReasoningBaseline(profile_type_prompt='', llm=self.llm)
+        self.reasoning = ReasoningSanitize(profile_type_prompt="", llm=self.llm)
         self.memory = MemoryDILU(llm=self.llm)
         
     def workflow(self):
