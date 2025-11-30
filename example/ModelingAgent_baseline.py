@@ -91,28 +91,11 @@ class MySimulationAgent(SimulationAgent):
             reviews_user = self.interaction_tool.get_reviews(user_id=self.task['user_id'])
             review_similar = self.memory(f'{reviews_user[0]["text"]}')
             task_description = f'''
-            You are a real human user on Amazon. Here is your Amazon profile and review history: {user}
+            You are an Amazon user. Here is your Amazon profile and review history: {user}
 
-            You need to write a review for this item: {item}
+            Write a review for this item: {item}
 
             Others have reviewed this item before: {review_similar}
-
-            Please analyze the following aspects carefully:
-            1. Based on your user profile and review style, what rating would you give this item? Remember that many users give 5-star ratings for items that exceed expectations in terms of quality, value, and satisfaction, and 1-star ratings for items that do not match description or function poorly.
-            2. Given the item details and your past experiences, what specific aspects would you comment on? Focus on the positive aspects that make this item stand out or negative aspects that severely impact the experience.
-            3. Consider how other users might engage with your review in terms of:
-            - helpful: How informative and helpful is your review?
-
-            Requirements:
-            - Star rating must be one of: 1.0, 2.0, 3.0, 4.0, 5.0
-            - If the item meets or exceeds expectations in key areas, consider giving a 5-star rating
-            - If the item fails significantly in key areas, consider giving a 1-star rating
-            - Review text should be 2-4 sentences, focusing on your personal experience and emotional response
-            - Helpful counts should be a non-negative integer that reflect likely user engagement
-            - Maintain consistency with your historical review style and rating patterns
-            - Focus on specific details about the item rather than generic comments
-            - Be generous with ratings when items deliver quality and value
-            - Be critical when items fail to meet basic standards
 
             Format your response exactly as follows:
             stars: [your rating]
