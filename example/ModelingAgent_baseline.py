@@ -6,6 +6,8 @@ from websocietysimulator.agent.modules.planning_modules import PlanningBase
 from websocietysimulator.agent.modules.reasoning_modules import ReasoningBase
 from websocietysimulator.agent.modules.memory_modules import MemoryDILU
 import logging
+import numpy as np
+from sklearn.metrics.pairwise import cosine_similarity
 logging.basicConfig(level=logging.INFO)
 
 class PlanningBaseline(PlanningBase):
@@ -65,7 +67,7 @@ class MySimulationAgent(SimulationAgent):
         self.reasoning = ReasoningBaseline(profile_type_prompt='', llm=self.llm)
         self.memory = MemoryDILU(llm=self.llm)
         
-    def workflow(self):
+    def workflow(self, get_reviews_method: str = 'first', review_similarity_method: str = 'none', max_reviews: int = 3, get_reviews_representative_bucket_size: int = 3, topk: int = 10):
         """
         Simulate user behavior
         Returns:
@@ -79,12 +81,51 @@ class MySimulationAgent(SimulationAgent):
                     user = str(self.interaction_tool.get_user(user_id=self.task['user_id']))
                 elif 'business' in sub_task['description']:
                     business = str(self.interaction_tool.get_item(item_id=self.task['item_id']))
-            reviews_item = self.interaction_tool.get_reviews(item_id=self.task['item_id'])
-            for review in reviews_item:
-                review_text = review['text']
-                self.memory(f'review: {review_text}')
-            reviews_user = self.interaction_tool.get_reviews(user_id=self.task['user_id'])
-            review_similar = self.memory(f'{reviews_user[0]["text"]}')
+
+            if review_similarity_method == 'none':
+                reviews_item = self.interaction_tool.get_reviews(item_id=self.task['item_id'], get_reviews_method=get_reviews_method, get_reviews_representative_bucket_size=get_reviews_representative_bucket_size)
+                for review in reviews_item:
+                    review_text = review['text']
+                    self.memory(f'review: {review_text}')
+                reviews_user = self.interaction_tool.get_reviews(user_id=self.task['user_id'], get_reviews_method=get_reviews_method, get_reviews_representative_bucket_size=get_reviews_representative_bucket_size)
+                review_similar = self.memory(f'{reviews_user[0]["text"]}')
+            
+            elif review_similarity_method == 'llm_vector_similarity_slim':
+                reviews_item = self.interaction_tool.get_reviews(item_id=self.task['item_id'], get_reviews_method=get_reviews_method, get_reviews_representative_bucket_size=get_reviews_representative_bucket_size)
+                for review in reviews_item:
+                    review_text = review['text']
+                    self.memory(f'review: {review_text}')
+                reviews_user = self.interaction_tool.get_reviews(user_id=self.task['user_id'], get_reviews_method=get_reviews_method, get_reviews_representative_bucket_size=get_reviews_representative_bucket_size)
+                review_similar = self.memory(f'{reviews_user["text"]}')
+
+            elif review_similarity_method == 'llm_vector_similarity_full':
+                embedding_function = self.memory.embedding
+                agent_reviews = self.interaction_tool.get_reviews(user_id=self.task['user_id'], get_reviews_method=get_reviews_method, get_reviews_representative_bucket_size=get_reviews_representative_bucket_size)
+                mean_agent_review_embedding = embedding_function('/n'.join([review['text'] for review in agent_reviews]))
+
+                other_user_review_embeddings = []
+
+
+                reviews_item = self.interaction_tool.get_reviews(item_id=self.task['item_id'], get_reviews_method=get_reviews_method, get_reviews_representative_bucket_size=get_reviews_representative_bucket_size)
+                for review in reviews_item:
+                    review_user = review['user_id']
+                    reviews_user = self.interaction_tool.get_reviews(user_id=review_user, get_reviews_method=get_reviews_method, get_reviews_representative_bucket_size=get_reviews_representative_bucket_size)
+                    other_user_review_embedding = embedding_function('/n'.join([review['text'] for review in reviews_user]))
+                    other_user_review_embeddings.append(other_user_review_embedding)
+
+
+                similarity_scores = []
+                for other_user_review_embedding in other_user_review_embeddings:
+                    similarity_score = cosine_similarity(mean_agent_review_embedding, other_user_review_embedding)
+                    similarity_scores.append(similarity_score)
+                del other_user_review_embeddings
+                top_k_indices = np.argpartition(similarity_scores, -topk)[-topk:]
+                most_similar_user_review_texts = [reviews_user[i]['text'] for i in top_k_indices]
+                review_similar = '/n'.join(most_similar_user_review_texts)
+                del most_similar_user_review_texts
+
+
+                
             task_description = f'''
             You are a real human user on Yelp, a platform for crowd-sourced business reviews. Here is your Yelp profile and review history: {user}
 
