@@ -242,60 +242,6 @@ class MemoryHybrid(MemoryBase):
     def __init__(self, llm):
         super().__init__(memory_type='hybrid', llm=llm)
 
-    def _parse_score_and_rationale(self, resp: str):
-        """Parse a LLM response that should contain a line like "Score: <int>" and a short rationale.
-        Returns (score:int, rationale:str). Uses conservative defaults on failure.
-        """
-        default_score = 5
-        if not resp:
-            return default_score, ''
-        lines = [ln.strip() for ln in resp.splitlines() if ln.strip()]
-        score = default_score
-        rationale = ''
-        for i, ln in enumerate(lines):
-            low = ln.lower()
-            if low.startswith('score:'):
-                parts = ln.split(':', 1)
-                if len(parts) > 1:
-                    try:
-                        score = int(parts[1].strip())
-                    except Exception:
-                        score = default_score
-                # rationale may be on same line after score or next non-empty line
-                remainder = parts[1].strip() if len(parts) > 1 else ''
-                if remainder and not remainder.isdigit():
-                    rationale = remainder
-                else:
-                    # pick next line if exists
-                    if i+1 < len(lines):
-                        rationale = lines[i+1]
-                break
-
-        # clamp
-        score = max(0, min(10, score))
-        return score, rationale
-
-    def addMemory(self, current_situation: str):
-        # Ask the LLM for a compact 1-2 line schema summary; fall back to a short truncation
-        prompt = (
-            "Write a 1-2 line compact schema summary of this trajectory. Include aspects (e.g. {food:+,service:-,price:+}), tone, rating_bias (numeric), and dealbreakers.\n\n"
-            "Trajectory:\n"
-        ) + current_situation
-
-        try:
-            summary = self.llm(messages=[{"role": "user", "content": prompt}], temperature=0.1)
-        except Exception:
-            summary = (current_situation.replace('\n', ' ')[:200]).strip()
-
-        doc = Document(
-            page_content=summary,
-            metadata={
-                'schema_summary': summary,
-                'task_trajectory': current_situation
-            }
-        )
-        self.scenario_memory.add_documents([doc])
-
     def retriveMemory(self, query_scenario: str):
         task_name = query_scenario
         if self.scenario_memory._collection.count() == 0:
@@ -317,7 +263,28 @@ class MemoryHybrid(MemoryBase):
             except Exception:
                 resp = ''
 
-            score, rationale = self._parse_score_and_rationale(resp)
+            # Parse score using regex (mirror MemoryGenerative behavior)
+            m = re.search(r"\d+", resp) if resp else None
+            if m:
+                try:
+                    score = int(m.group(0))
+                except Exception:
+                    score = 5
+            else:
+                score = 5
+
+            # Clamp score
+            score = max(0, min(10, score))
+
+            # Extract a one-line rationale: remove the 'Score' token and take
+            # the first non-empty remaining line.
+            rationale = ''
+            if resp:
+                without_score = re.sub(r"Score:\s*\d+", "", resp, flags=re.IGNORECASE)
+                lines = [ln.strip() for ln in without_score.splitlines() if ln.strip()]
+                if lines:
+                    rationale = lines[0]
+
             candidates.append({'doc': doc, 'score': score, 'rationale': rationale})
 
         if not candidates:
@@ -348,3 +315,23 @@ class MemoryHybrid(MemoryBase):
         _ = digest_resp  # digest_resp intentionally unused for now
         return exemplar
 
+    def addMemory(self, current_situation: str):
+        # Ask the LLM for a compact 1-2 line schema summary; fall back to a short truncation
+        prompt = (
+            "Write a 1-2 line compact schema summary of this trajectory. Include aspects (e.g. {food:+,service:-,price:+}), tone, rating_bias (numeric), and dealbreakers.\n\n"
+            "Trajectory:\n"
+        ) + current_situation
+
+        try:
+            summary = self.llm(messages=[{"role": "user", "content": prompt}], temperature=0.1)
+        except Exception:
+            summary = (current_situation.replace('\n', ' ')[:200]).strip()
+
+        doc = Document(
+            page_content=summary,
+            metadata={
+                'schema_summary': summary,
+                'task_trajectory': current_situation
+            }
+        )
+        self.scenario_memory.add_documents([doc])
