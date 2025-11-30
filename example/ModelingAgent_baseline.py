@@ -56,6 +56,41 @@ class ReasoningBaseline(ReasoningBase):
         
         return reasoning_result
 
+class ReasoningVoteRating(ReasoningBase):
+    """Inherit from ReasoningBase"""
+    
+    def __init__(self, profile_type_prompt, llm):
+        """Initialize the reasoning module"""
+        super().__init__(profile_type_prompt=profile_type_prompt, memory=None, llm=llm)
+        
+    def __call__(self, task_description: str):
+        """Override the parent class's __call__ method"""
+        prompt = '''
+{task_description}'''
+        prompt = prompt.format(task_description=task_description)
+
+        messages = [{"role": "user", "content": prompt}]
+        reasoning_result = self.llm(
+            messages=messages,
+            temperature=0.7,
+            max_tokens=1000,
+            n=3
+        )
+
+        vote_results = [set() for _ in range(5)]
+        for vote_result in reasoning_result:
+            try:
+                stars_line = [line for line in vote_result.split('\n') if 'stars:' in line][0]
+                stars = float(stars_line.split(':')[1].strip())
+                if stars >= 1.0 and stars <= 5.0:
+                    vote_results[int(stars)-1].add(vote_result)
+            except:
+                continue
+        
+        final_set = max(vote_results, key=lambda x: len(x))
+        final_result = final_set.pop() if len(final_set) > 0 else reasoning_result[0]
+        return final_result
+
 
 class MySimulationAgent(SimulationAgent):
     """Participant's implementation of SimulationAgent."""
@@ -64,7 +99,8 @@ class MySimulationAgent(SimulationAgent):
         """Initialize MySimulationAgent"""
         super().__init__(llm=llm)
         self.planning = PlanningBaseline(llm=self.llm)
-        self.reasoning = ReasoningBaseline(profile_type_prompt='', llm=self.llm)
+        # self.reasoning = ReasoningBaseline(profile_type_prompt='', llm=self.llm)
+        self.reasoning = ReasoningVoteRating(profile_type_prompt='', llm=self.llm)
         self.memory = MemoryDILU(llm=self.llm)
         
     def workflow(self):
