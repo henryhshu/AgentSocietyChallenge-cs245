@@ -163,7 +163,7 @@ if __name__ == "__main__":
     # Load env variables
     load_dotenv()
     data_dir = os.getenv("DATA_DIR")
-    openai_api_key = os.getenv("DEEPSEEK_API_KEY")
+    openai_api_key = os.getenv("OPENAI_API_KEY")
 
     # Set the data
     task_set = "yelp" # "goodreads" or "yelp"
@@ -176,7 +176,7 @@ if __name__ == "__main__":
 
     # Run the simulation
     # If you don't set the number of tasks, the simulator will run all tasks.
-    outputs = simulator.run_simulation(number_of_tasks=200, enable_threading=True, max_workers=10)
+    outputs = simulator.run_simulation(number_of_tasks=200, enable_threading=True, max_workers=4)
     
     # Evaluate the agent
     evaluation_results = simulator.evaluate()       
