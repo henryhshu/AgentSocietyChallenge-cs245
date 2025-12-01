@@ -19,3 +19,4 @@ db/
 .env
 *.env
 data/
+evaluation_results_*.json

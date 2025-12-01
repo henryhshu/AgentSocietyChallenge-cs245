@@ -1,11 +1,10 @@
 from websocietysimulator import Simulator
 from websocietysimulator.agent import SimulationAgent
 import json 
-import os
 from websocietysimulator.llm import LLMBase, GeminiLLM
 from websocietysimulator.agent.modules.planning_modules import PlanningBase 
 from websocietysimulator.agent.modules.reasoning_modules import ReasoningBase
-from websocietysimulator.agent.modules.memory_modules import MemoryHybrid
+from websocietysimulator.agent.modules.memory_modules import MemoryDILU, MemoryTP
 import logging
 logging.basicConfig(level=logging.INFO)
 
@@ -64,8 +63,7 @@ class MySimulationAgent(SimulationAgent):
         super().__init__(llm=llm)
         self.planning = PlanningBaseline(llm=self.llm)
         self.reasoning = ReasoningBaseline(profile_type_prompt='', llm=self.llm)
-        #self.memory = MemoryDILU(llm=self.llm)
-        self.memory = MemoryHybrid(llm=self.llm)
+        self.memory = MemoryTP(llm=self.llm)
         
     def workflow(self):
         """
@@ -144,22 +142,21 @@ class MySimulationAgent(SimulationAgent):
 
 if __name__ == "__main__":
     # Set the data
-    task_set = "yelp" # "goodreads" or "yelp"
-    simulator = Simulator(data_dir="data", device="gpu", cache=True)
-    simulator.set_task_and_groundtruth(task_dir=f"example/track1/{task_set}/tasks", groundtruth_dir=f"example/track1/{task_set}/groundtruth")
+    task_set = "amazon" # "goodreads" or "yelp"
+    simulator = Simulator(data_dir="data", device="cpu", cache=True)
+    simulator.set_task_and_groundtruth(task_dir=f"example/track1/{task_set}/tasks", groundtruth_dir=f"./track1/{task_set}/groundtruth")
 
-    # Set the agent and LLM (use Google Gemini)
+    # Set the agent and LLM
     simulator.set_agent(MySimulationAgent)
-    api_key = os.getenv("MY_API_KEY")
-    simulator.set_llm(GeminiLLM(api_key=api_key, model="gemini-2.5-flash"))
+    simulator.set_llm(GeminiLLM(api_key="GEMINI_API_KEY", model="gemini-2.0-flash"))
 
     # Run the simulation
     # If you don't set the number of tasks, the simulator will run all tasks.
-    outputs = simulator.run_simulation(number_of_tasks=None, enable_threading=True, max_workers=10)
+    outputs = simulator.run_simulation(number_of_tasks=50, enable_threading=True, max_workers=10)
     
     # Evaluate the agent
     evaluation_results = simulator.evaluate()       
-    with open(f'./evaluation_results_track1_{task_set}.json', 'w') as f:
+    with open(f'./report/evaluation_results_track1_{task_set}.json', 'w') as f:
         json.dump(evaluation_results, f, indent=4)
 
     # Get evaluation history

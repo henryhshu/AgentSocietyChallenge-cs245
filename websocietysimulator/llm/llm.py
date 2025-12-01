@@ -145,121 +145,189 @@ class OpenAILLM(LLMBase):
         return self.embedding_model 
 
 
+from typing import List, Dict, Optional, Union
+
+import google.genai as genai
+from google.genai import types as genai_types
+import os
+
+
 class GeminiLLM(LLMBase):
     """
-    Google Gemini LLM wrapper.
+    Google Gemini LLM wrapper using the google-genai SDK.
     """
+
     def __init__(self, api_key: str, model: str = "gemini-2.5-flash"):
         super().__init__(model)
-        try:
-            from google import genai
-        except Exception as e:
-            raise ImportError(
-                "google.generativeai package is required for GeminiLLM. "
-                "Install with `pip install google-generativeai` and follow "
-                "Google Generative AI authentication instructions."
-            ) from e
 
-        try:
-            if hasattr(genai, 'configure'):
-                genai.configure(api_key=api_key)
-            else:
-                import os
-                os.environ.setdefault('GOOGLE_API_KEY', api_key)
-        except Exception:
-            pass
+        # This is the *only* place the client is created.
+        # API key is passed explicitly here.
 
-        self.genai = genai
+        self.client = genai.Client(api_key=api_key)
 
-    def __call__(self, messages: List[Dict[str, str]], model: Optional[str] = None, temperature: float = 0.0, max_tokens: int = 500, stop_strs: Optional[List[str]] = None, n: int = 1) -> Union[str, List[str]]:
-        sdk = self.genai
+
+    def __call__(
+        self,
+        messages: List[Dict[str, str]],
+        model: Optional[str] = None,
+        temperature: float = 0.0,
+        max_tokens: int = 500,
+        stop_strs: Optional[List[str]] = None,
+        n: int = 1,
+    ) -> Union[str, List[str]]:
+
         used_model = model or self.model
 
-        response = None
+        # Convert OpenAI-style messages into Gemini Content objects
+        # messages: [{"role": "user"|"assistant"|"system", "content": "..."}]
+        contents: List[genai_types.Content] = []
+        for m in messages:
+            text = m.get("content", "")
+            if not text:
+                continue
+            role = m.get("role", "user")
+            contents.append(
+                genai_types.Content(
+                    role=role,
+                    parts=[genai_types.Part.from_text(text=text)],
+                )
+            )
+
+        # Build generation config
+        gen_config = genai_types.GenerateContentConfig(
+            temperature=temperature,
+            max_output_tokens=max_tokens,
+            stop_sequences=stop_strs or [],
+            candidate_count=n,
+        )
+
         try:
-            if hasattr(sdk, 'chat') and hasattr(sdk.chat, 'completions') and hasattr(sdk.chat.completions, 'create'):
-                response = sdk.chat.completions.create(
-                    model=used_model,
-                    messages=messages,
-                    temperature=temperature,
-                    max_output_tokens=max_tokens,
-                    stop=stop_strs,
-                    candidate_count=n
-                )
-            elif hasattr(sdk, 'chat') and hasattr(sdk.chat, 'create'):
-                response = sdk.chat.create(
-                    model=used_model,
-                    messages=messages,
-                    temperature=temperature,
-                    max_output_tokens=max_tokens,
-                    stop=stop_strs,
-                    candidate_count=n
-                )
-            elif hasattr(sdk, 'generate'):
-                input_text = "\n".join(m['content'] for m in messages if 'content' in m)
-                response = sdk.generate(model=used_model, prompt=input_text, max_output_tokens=max_tokens, temperature=temperature)
-            else:
-                raise RuntimeError("Unsupported google.generativeai SDK shape; please upgrade the SDK or adjust code.")
+            resp = self.client.models.generate_content(
+                model=used_model,
+                contents=contents,
+                config=gen_config,
+            )
         except Exception as e:
             logger.error(f"Gemini call failed: {e}")
             raise
 
-        def _extract_text(resp):
-            try:
-                if hasattr(resp, 'choices'):
-                    choices = resp.choices
-                    if len(choices) >= 1:
-                        msg = getattr(choices[0], 'message', None)
-                        if isinstance(msg, dict):
-                            return msg.get('content') or msg.get('text')
-                        if hasattr(msg, 'content'):
-                            return msg.content
-                if hasattr(resp, 'candidates'):
-                    c = resp.candidates
-                    if len(c) >= 1:
-                        cand = c[0]
-                        if isinstance(cand, dict):
-                            return cand.get('content') or cand.get('text')
-                        return getattr(cand, 'content', None) or getattr(cand, 'text', None)
-                if isinstance(resp, dict):
-                    if 'candidates' in resp and resp['candidates']:
-                        return resp['candidates'][0].get('content') or resp['candidates'][0].get('text')
-                    if 'output' in resp and resp['output']:
-                        out = resp['output'][0]
-                        if isinstance(out, dict):
-                            return out.get('content') or out.get('text')
-                out = getattr(resp, 'output', None)
-                if out:
-                    first = out[0]
-                    return getattr(first, 'content', None) or (first.get('content') if isinstance(first, dict) else None)
-            except Exception:
-                return None
-            return None
+        # Helper to extract one string from the response
+        def _extract_single_text(r) -> str:
+            # The SDK provides resp.text as a convenience for the first candidate
+            txt = getattr(r, "text", None)
+            if txt:
+                return txt
 
+            # Fallback: manually join candidate parts if needed
+            candidates = getattr(r, "candidates", None) or []
+            if candidates:
+                cand = candidates[0]
+                content = getattr(cand, "content", None)
+                if content and getattr(content, "parts", None):
+                    parts = content.parts
+                    texts = [
+                        getattr(p, "text", "")
+                        for p in parts
+                        if hasattr(p, "text") and getattr(p, "text", None)
+                    ]
+                    if texts:
+                        return "\n".join(texts)
+
+            # Last resort: string cast
+            return str(r)
+
+        # If n == 1, just return one string
         if n == 1:
-            text = _extract_text(response)
-            if text is None:
-                return str(response)
-            return text
-        else:
-            results = []
-            try:
-                if hasattr(response, 'candidates'):
-                    for cand in response.candidates[:n]:
-                        if isinstance(cand, dict):
-                            results.append(cand.get('content') or cand.get('text') or str(cand))
-                        else:
-                            results.append(getattr(cand, 'content', None) or getattr(cand, 'text', None) or str(cand))
-                elif hasattr(response, 'choices'):
-                    for choice in response.choices[:n]:
-                        msg = getattr(choice, 'message', None)
-                        if msg:
-                            results.append(msg.get('content') if isinstance(msg, dict) else getattr(msg, 'content', None) or str(msg))
-                else:
-                    results.append(_extract_text(response) or str(response))
-            except Exception:
-                results = [str(response)]
-            return results
+            return _extract_single_text(resp)
+
+        # For n > 1, extract each candidate
+        results: List[str] = []
+        candidates = getattr(resp, "candidates", None) or []
+        for cand in candidates[:n]:
+            # Try cand.content.parts[..].text
+            content = getattr(cand, "content", None)
+            if content and getattr(content, "parts", None):
+                texts = [
+                    getattr(p, "text", "")
+                    for p in content.parts
+                    if hasattr(p, "text") and getattr(p, "text", None)
+                ]
+                if texts:
+                    results.append("\n".join(texts))
+                    continue
+            # Fallback: cand.text or str(cand)
+            txt = getattr(cand, "text", None)
+            results.append(txt if txt else str(cand))
+
+        if not results:
+            # fallback: at least return something
+            results = [_extract_single_text(resp)]
+        return results
 
     def get_embedding_model(self):
-        return None
+        """
+        Return a callable embedding function for Chroma/other vector stores,
+        backed by Gemini embeddings via google-genai.
+        """
+
+        client = self.client  # reuse the same client
+
+        class _GenAIEmbeddings:
+            """
+            Adapter exposing embed_documents/embed_query backed by Gemini embeddings.
+
+            Uses client.models.embed_content(model=..., contents=[...]).
+            """
+
+            def __init__(self, client, model_name: str = "text-embedding-004"):
+                self._client = client
+                self._model_name = model_name
+
+            def _embed_batch(self, texts: List[str]) -> List[List[float]]:
+                if not texts:
+                    return []
+
+                resp = self._client.models.embed_content(
+                    model=self._model_name,
+                    contents=texts,
+                )
+
+                # resp.embeddings: list of embedding objects, each with .values
+                embeddings = getattr(resp, "embeddings", None)
+                if embeddings is None and isinstance(resp, dict):
+                    embeddings = resp.get("embeddings")
+
+                if not embeddings:
+                    return []
+
+                vectors: List[List[float]] = []
+                for emb in embeddings:
+                    if emb is None:
+                        continue
+                    vals = getattr(emb, "values", None)
+                    if vals is None and isinstance(emb, dict):
+                        vals = emb.get("values")
+                    if vals is None:
+                        continue
+                    vectors.append(list(vals))
+
+                return vectors
+
+            def embed_documents(self, texts: List[str]) -> List[List[float]]:
+                return self._embed_batch(texts)
+
+            def embed_query(self, text: str) -> List[float]:
+                vecs = self._embed_batch([text])
+                return vecs[0] if vecs else []
+
+            async def aembed_documents(self, texts: List[str]) -> List[List[float]]:
+                import asyncio
+                loop = asyncio.get_running_loop()
+                return await loop.run_in_executor(None, self.embed_documents, texts)
+
+            async def aembed_query(self, text: str) -> List[float]:
+                vecs = await self.aembed_documents([text])
+                return vecs[0] if vecs else []
+
+        # You can change the default embedding model name if you want
+        return _GenAIEmbeddings(client, model_name="text-embedding-004")

@@ -101,6 +101,51 @@ Task:{task_description}
 '''
         return prompt.format(example=few_shot, task_description=task_description, task_type=task_type, feedback=feedback)
 
+
+class PlanningTemplateDrafting(PlanningBase):
+    """Planner that decomposes a task and produces drafting templates for each
+    subtask. The planner is instructed to return a single JSON array (no extra
+    text) where each element is an object with the following keys:
+      - description: short text describing the subtask
+      - reasoning_instruction: what the reasoner should consider when doing the subtask
+      - tool_use_instruction: how to call tools (e.g. get_user_history(user_id))
+      - draft_template: a short template showing how the final drafted content
+                        should be formatted (e.g. 'stars: [stars]\nreview: [review]')
+      - format: free-form tag describing the required format (e.g. 'two_line')
+
+    This subclass is useful when you want the planner to enforce a strict
+    drafting template that downstream components can rely on.
+    """
+
+    def create_prompt(self, task_type, task_description, feedback, few_shot):
+        # Provide explicit instruction to return only a JSON array. Give a
+        # concise example so the model learns the exact schema.
+        example = (
+            '[{"description":"Get user profile","reasoning_instruction":"Collect recent reviews and style features.",'
+            '"tool_use_instruction":"get_user_history(user_id)",'
+            '"draft_template":"stars: [stars]\\nreview: [review]","format":"two_line"}]'
+        )
+
+        if feedback == '':
+            prompt = (
+                "You are a planner that decomposes a {task_type} task into an ordered list of subtasks. "
+                "For each subtask return an object with keys: description, reasoning_instruction, "
+                "tool_use_instruction, draft_template, and format. "
+                "RETURN ONLY a single JSON array (no surrounding text or explanation). "
+                "Example: {example}\n\nTask: {task_description}\n"
+            )
+            prompt = prompt.format(example=example, task_description=task_description, task_type=task_type)
+        else:
+            prompt = (
+                "You are a planner that decomposes a {task_type} task into an ordered list of subtasks. "
+                "Include reflexion feedback and produce the same JSON array schema. "
+                "RETURN ONLY a single JSON array (no surrounding text or explanation). "
+                "Example: {example}\n\nend\n--------------------\nReflexion:{feedback}\nTask:{task_description}\n"
+            )
+            prompt = prompt.format(example=example, task_description=task_description, task_type=task_type, feedback=feedback)
+
+        return prompt
+
 class PlanningVoyager(PlanningBase):
     def create_prompt(self, task_type, task_description, feedback, few_shot):
         if feedback == '':
