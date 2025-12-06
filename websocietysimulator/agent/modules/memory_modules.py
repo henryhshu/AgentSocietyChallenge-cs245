@@ -219,7 +219,7 @@ class MemoryVoyager(MemoryBase):
 
         For example:
 
-Please fill in this part yourself
+Retrieved user profile showing preference for Italian cuisine and budget-friendly options. Found restaurant with good ratings. Analyzed reviews emphasizing food quality and ambiance. Decided on 4-star rating with focus on authentic pasta and cozy atmosphere.
 
         Trajectory:
         '''
@@ -241,7 +241,7 @@ Please fill in this part yourself
         self.scenario_memory.add_documents([doc])
 
 
-class MemoryIngrid(MemoryBase):
+class MemoryHybrid(MemoryBase):
     def __init__(self, llm):
         super().__init__(memory_type='generative', llm=llm)
 
@@ -320,7 +320,7 @@ Please fill in this part yourself
         # Add to memory store
         self.scenario_memory.add_documents([doc])
 
-class MemoryHybrid(MemoryBase):
+class MemoryIngrid(MemoryBase):
     """Hybrid memory: store short schema-like summaries (Voyager path) and
     re-rank with a fast generative pass. Retrieval returns a final
     contracted JSON produced by an LLM using an exemplar + compact digest.
@@ -357,12 +357,10 @@ class MemoryHybrid(MemoryBase):
                         rationale = lines[i+1]
                 break
 
-        # clamp
-        score = max(0, min(10, score))
+        score = max(0, min(5, score))
         return score, rationale
 
     def addMemory(self, current_situation: str):
-        # Ask the LLM for a compact 1-2 line schema summary; fall back to a short truncation
         prompt = (
             "Write a 1-2 line compact schema summary of this trajectory. Include aspects (e.g. {food:+,service:-,price:+}), tone, rating_bias (numeric), and dealbreakers.\n\n"
             "Trajectory:\n"
@@ -387,7 +385,6 @@ class MemoryHybrid(MemoryBase):
         if self.scenario_memory._collection.count() == 0:
             return ''
 
-        # top-k by summary similarity
         results = self.scenario_memory.similarity_search_with_score(task_name, k=6)
         candidates = []
         for res in results:
@@ -429,8 +426,8 @@ class MemoryHybrid(MemoryBase):
         except Exception:
             digest_resp = ''
 
-        # We keep digest generation internally for future use but do not parse
-        # or return structured JSON here to match other memory modules.
-        _ = digest_resp  # digest_resp intentionally unused for now
+        # # We keep digest generation internally for future use but do not parse
+        # # or return structured JSON here to match other memory modules.
+        # _ = digest_resp  # digest_resp intentionally unused for now
         return exemplar
 
