@@ -2,6 +2,23 @@
   <h1 style="color: black; margin: 0; font-size: 2em;">CS 245 AgentSociety Challenge: Track 1</h1>
 </div>
 
+# This Main branch only contains the base simulation challenge
+To see our optimizations, view other remote branches in our repository by following the commands
+
+   ```bash
+   git fetch --all
+   git branch -r
+   ```
+
+To checkout a remote branch and set up a local branch that tracks it, run
+   ```bash
+   git checkout -b <local-name> origin/<remote-branch>
+   ```
+
+The branch henry/planning-final contains code adaptations for the planning module (workflow changes, adding new planners, Gemini LLM)
+The branch ingrid/memory contains code adaptations for optimizing the memory module (hyperparameter tuning strategies, adding new memory modules, prompt tuners)
+The other experiment branches pritam/** and gpt/** outline reproducible experiments for optimizing the gpt-based LLM on different datasets focused on improving the reasoning modules.
+
 # 🚀 AgentSociety Challenge Track 1 (User Modeling)
 ![License](https://img.shields.io/badge/license-MIT-green) &ensp;
 [![arXiv](https://img.shields.io/badge/arXiv-2502.18754-b31b1b.svg)](https://arxiv.org/abs/2502.18754)
@@ -19,7 +36,7 @@ This repository includes the base repository for the challenge:
 - Scripts for dataset processing and analysis.
 - Example usage for creating and evaluating agents.
 
-It also includes our changes for improving the user simulation using the Reasoning, Planning, and Memory modules.
+It also includes our changes for improving the user simulation using the Reasoning, Planning, and Memory modules, which are modularized in other branches.
 
 ---
 
