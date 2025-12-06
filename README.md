@@ -1,23 +1,25 @@
 <div style="text-align: center; display: flex; align-items: center; justify-content: center; background-color: white; padding: 20px; border-radius: 30px;">
-  <img src="./static/ASC.jpg" alt="AgentSociety Challenge Logo" width="100" style="margin-right: 20px; border-radius: 10%;">
-  <h1 style="color: black; margin: 0; font-size: 2em;">WWW'25 AgentSociety Challenge: WebSocietySimulator</h1>
+  <h1 style="color: black; margin: 0; font-size: 2em;">CS 245 AgentSociety Challenge: Track 1</h1>
 </div>
 
-# 🚀 AgentSociety Challenge
+# 🚀 AgentSociety Challenge Track 1 (User Modeling)
 ![License](https://img.shields.io/badge/license-MIT-green) &ensp;
-[![Competition Link](https://img.shields.io/badge/competition-link-orange)](https://www.codabench.org/competitions/4574/) &ensp;
 [![arXiv](https://img.shields.io/badge/arXiv-2502.18754-b31b1b.svg)](https://arxiv.org/abs/2502.18754)
 
-Welcome to the **WWW'25 AgentSociety Challenge**! This repository provides the tools and framework needed to participate in a competition that focuses on building **LLM Agents** for **user behavior simulation** and **recommendation systems** based on open source datasets.
+This repository provides the tools and framework needed to participate in a competition that focuses on building **LLM Agents** for **user behavior simulation** and **recommendation systems** based on open source datasets.
 
 Participants are tasked with developing intelligent agents that interact with a simulated environment and perform specific tasks in two competition tracks:
 1. **User Behavior Simulation Track**: Agents simulate user behavior, including generating reviews and ratings.
 2. **Recommendation Track**: Agents generate recommendations based on provided contextual data.
 
-This repository includes:
+Our group focused on track 1, which is simulating user behavior.
+
+This repository includes the base repository for the challenge:
 - The core library `websocietysimulator` for environment simulation.
 - Scripts for dataset processing and analysis.
 - Example usage for creating and evaluating agents.
+
+It also includes our changes for improving the user simulation using the Reasoning, Planning, and Memory modules.
 
 ---
 
@@ -106,39 +108,12 @@ You can name the dataset directory whatever you prefer (e.g., `dataset/`).
 
 ---
 
-### 4. Develop Your Agent
-
-Create a custom agent by extending either `SimulationAgent` or `RecommendationAgent`. Refer to the examples in the `example/` directory. Here's a quick template:
-
-```python
-from yelpsimulator.agents.simulation_agent import SimulationAgent
-
-class MySimulationAgent(SimulationAgent):
-    def workflow(self):
-        # The simulator will automatically set the task for your agent. You can access the task by `self.task` to get task information.
-        print(self.task)
-
-        # You can also use the `interaction_tool` to get data from the dataset.
-        # For example, you can get the user information by `interaction_tool.get_user(user_id="example_user_id")`.
-        # You can also get the item information by `interaction_tool.get_item(item_id="example_item_id")`.
-        # You can also get the reviews by `interaction_tool.get_reviews(review_id="example_review_id")`.
-        user_info = interaction_tool.get_user(user_id="example_user_id")
-
-        # Implement your logic here
-        
-        # Finally, you need to return the result in the format of `stars` and `review`.
-        # For recommendation track, you need to return a candidate list of items, in which the first item is the most recommended item.
-        stars = 4.0
-        review = "Great experience!"
-        return stars, review
-```
-
 - Check out the [Tutorial](./tutorials/agent_development.md) for Agent Development.
 - Baseline User Behavior Simulation Agent: [Baseline User Behavior Simulation Agent](./example/ModelingAgent_baseline.py).
 - Baseline Recommendation Agent: [Baseline Recommendation Agent](./example/RecAgent_baseline.py).
 ---
 
-### 5. Evaluation your agent with training data
+### 4. Evaluationing your agent with training data
 
 Run the simulation using the provided `Simulator` class:
 
@@ -169,20 +144,6 @@ agent_outputs = simulator.run_simulation(number_of_tasks=None, enable_threading=
 evaluation_results = simulator.evaluate()
 ```
 - If you want to use your own LLMClient, you can easily implement it by inheriting the `LLMBase` class. Refer to the [Tutorial](./tutorials/agent_development.md) for more information.
-
----
-
-### 6. Submit your agent
-- You should register your team firstly in the competition homepage ([Homepage](https://tsinghua-fib-lab.github.io/AgentSocietyChallenge)).
-- Submit your solution through the submission button at the specific track page. (the submission button is at the top right corner of the page)
-  - [User Modeling Track](https://tsinghua-fib-lab.github.io/AgentSocietyChallenge/pages/behavior-track.html)
-  - [Recommendation Track](https://tsinghua-fib-lab.github.io/AgentSocietyChallenge/pages/recommendation-track.html)
-  - Please register your team first.
-  - When you submit your agent, please carefully **SELECT the TRACK you want to submit to.**
-- **The content of your submission should be a .py file containing your agent (Only one `{your_team}.py` file without evaluation code).**
-- Example submissions:
-  - For Track 1: [submission_1](example/trackOneSubmission_example.zip)
-  - For Track 2: [submission_2](example/trackTwoSubmission_example.zip)
 
 ---
 
