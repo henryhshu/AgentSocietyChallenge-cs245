@@ -3,7 +3,7 @@ from websocietysimulator.agent import SimulationAgent
 import json 
 import os
 from websocietysimulator.llm import LLMBase, GeminiLLM
-from websocietysimulator.agent.modules.planning_modules import PlanningBase, PlanningTemplateDrafting, PlanningVoyager, PlanningDEPS, PlanningIO
+from websocietysimulator.agent.modules.planning_modules import PlanningBase, PlanningTemplateDrafting, PlanningVoyager, PlanningDEPS, PlanningIO, PlanningTD
 from websocietysimulator.agent.modules.reasoning_modules import ReasoningBase, ReasoningTemplateDrafting, ReasoningDILU, ReasoningSelfRefine
 from websocietysimulator.agent.modules.memory_modules import MemoryHybrid, MemoryDILU, MemoryVoyager, MemoryGenerative, MemoryTP, MemoryIngrid
 import logging
@@ -106,7 +106,7 @@ class ReasoningBaseline(ReasoningBase):
         return reasoning_result
 
 
-class MySimulationAgent(SimulationAgent):
+class SimulationAgentWorkflow(SimulationAgent):
     """Participant's implementation of SimulationAgent."""
     
     def __init__(self, llm: LLMBase):
@@ -114,8 +114,8 @@ class MySimulationAgent(SimulationAgent):
         super().__init__(llm=llm)
         # Use the new template-based drafting planner to produce strict plan templates
         #self.planning = PlanningTemplateDrafting(llm=self.llm)
-        self.memory = MemoryTP(llm=self.llm)
-        self.planning = PlanningBaseline(llm=self.llm)
+        self.memory = MemoryDILU(llm=self.llm)
+        self.planning = PlanningIO(llm=self.llm)
         # Allow toggling whether the reasoner consumes planner output using
         # environment variable `ENABLE_PLANNING_INPUT` (default: enabled).
         self.reasoning = ReasoningBaseline(profile_type_prompt='', llm=self.llm, use_planning_input=False)
@@ -324,12 +324,12 @@ class MySimulationAgent(SimulationAgent):
 
 if __name__ == "__main__":
     # Set the data
-    task_set = "amazon" #"amazon" # "goodreads" or "yelp"
+    task_set = "yelp" #"amazon" # "goodreads" or "yelp"
     simulator = Simulator(data_dir="data", device="gpu", cache=True)
     simulator.set_task_and_groundtruth(task_dir=f"example/track1/{task_set}/tasks", groundtruth_dir=f"example/track1/{task_set}/groundtruth")
 
     # Set the agent and LLM (use Google Gemini)
-    simulator.set_agent(MySimulationAgent)
+    simulator.set_agent(SimulationAgentWorkflow)
     
     api_key = os.getenv("GEMINI_API_KEY")
     simulator.set_llm(GeminiLLM(api_key=api_key, model="gemini-2.0-flash"))
@@ -340,7 +340,7 @@ if __name__ == "__main__":
     
     # Evaluate the agent
     evaluation_results = simulator.evaluate()
-    with open(f'./report/evaluation_results_memoryTP_{task_set}.json', 'w') as f:
+    with open(f'./report/evaluation_results_planningio_{task_set}.json', 'w') as f:
         json.dump(evaluation_results, f, indent=4)
 
     # Get evaluation history

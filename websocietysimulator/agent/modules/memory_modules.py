@@ -169,7 +169,7 @@ Ongoing task:
 {task_description}
 Plan:
 """
-            experience_plans.append(self.llm(messages={prompt}, temperature=0.1))
+            experience_plans.append(self.llm(messages=[{"role": "user", "content": prompt}], temperature=0.1))
             
         return 'Plan from successful attempt in similar task:\n' + '\n'.join(experience_plans)
 
@@ -214,12 +214,12 @@ class MemoryVoyager(MemoryBase):
         # Prompt template for summarizing trajectory
         voyager_prompt = '''You are a superbly helpful assistant that writes a description of the task resolution trajectory.
 
-        1) Try to summarize the trajectory in no more than 5 sentences.
+        1) Try to summarize the trajectory in no more than 4 sentences.
         2) Your response should be a single line of text.
 
         For example:
 
-Please fill in this part yourself
+Retrieved user profile showing preference for Italian cuisine and budget-friendly options. Found restaurant with good ratings. Analyzed reviews emphasizing food quality and ambiance. Decided on 4-star rating with focus on authentic pasta and cozy atmosphere.
 
         Trajectory:
         '''

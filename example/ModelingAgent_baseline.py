@@ -1,11 +1,14 @@
+import os
 from websocietysimulator import Simulator
 from websocietysimulator.agent import SimulationAgent
 import json 
 from websocietysimulator.llm import LLMBase, GeminiLLM
-from websocietysimulator.agent.modules.planning_modules import PlanningBase 
+from websocietysimulator.agent.modules.planning_modules import PlanningBase, PlanningTemplateDrafting, PlanningVoyager
 from websocietysimulator.agent.modules.reasoning_modules import ReasoningBase
-from websocietysimulator.agent.modules.memory_modules import MemoryDILU, MemoryTP
+from websocietysimulator.agent.modules.memory_modules import MemoryDILU, MemoryGenerative, MemoryTP, MemoryHybrid, MemoryVoyager
 import logging
+from dotenv import load_dotenv
+load_dotenv()
 logging.basicConfig(level=logging.INFO)
 
 class PlanningBaseline(PlanningBase):
@@ -63,7 +66,7 @@ class MySimulationAgent(SimulationAgent):
         super().__init__(llm=llm)
         self.planning = PlanningBaseline(llm=self.llm)
         self.reasoning = ReasoningBaseline(profile_type_prompt='', llm=self.llm)
-        self.memory = MemoryTP(llm=self.llm)
+        self.memory = MemoryVoyager(llm=self.llm)
         
     def workflow(self):
         """
@@ -86,34 +89,15 @@ class MySimulationAgent(SimulationAgent):
             reviews_user = self.interaction_tool.get_reviews(user_id=self.task['user_id'])
             review_similar = self.memory(f'{reviews_user[0]["text"]}')
             task_description = f'''
-            You are a real human user on Yelp, a platform for crowd-sourced business reviews. Here is your Yelp profile and review history: {user}
+            You are a Yelp user. Here is your Yelp profile and review history: {user}
 
-            You need to write a review for this business: {business}
+            Write a review for this business: {business}
 
             Others have reviewed this business before: {review_similar}
 
-            Please analyze the following aspects carefully:
-            1. Based on your user profile and review style, what rating would you give this business? Remember that many users give 5-star ratings for excellent experiences that exceed expectations, and 1-star ratings for very poor experiences that fail to meet basic standards.
-            2. Given the business details and your past experiences, what specific aspects would you comment on? Focus on the positive aspects that make this business stand out or negative aspects that severely impact the experience.
-            3. Consider how other users might engage with your review in terms of:
-            - Useful: How informative and helpful is your review?
-            - Funny: Does your review have any humorous or entertaining elements?
-            - Cool: Is your review particularly insightful or praiseworthy?
-
-            Requirements:
-            - Star rating must be one of: 1.0, 2.0, 3.0, 4.0, 5.0
-            - If the business meets or exceeds expectations in key areas, consider giving a 5-star rating
-            - If the business fails significantly in key areas, consider giving a 1-star rating
-            - Review text should be 2-4 sentences, focusing on your personal experience and emotional response
-            - Useful/funny/cool counts should be non-negative integers that reflect likely user engagement
-            - Maintain consistency with your historical review style and rating patterns
-            - Focus on specific details about the business rather than generic comments
-            - Be generous with ratings when businesses deliver quality service and products
-            - Be critical when businesses fail to meet basic standards
-
             Format your response exactly as follows:
             stars: [your rating]
-            review: [your review]
+            review: [2-4 sentence review, focus on personal experience]
             '''
             result = self.reasoning(task_description)
             
@@ -142,21 +126,23 @@ class MySimulationAgent(SimulationAgent):
 
 if __name__ == "__main__":
     # Set the data
-    task_set = "amazon" # "goodreads" or "yelp"
-    simulator = Simulator(data_dir="data", device="cpu", cache=True)
-    simulator.set_task_and_groundtruth(task_dir=f"example/track1/{task_set}/tasks", groundtruth_dir=f"./track1/{task_set}/groundtruth")
+    task_set = "yelp" # "goodreads" or "yelp"
+    simulator = Simulator(data_dir="data", device="gpu", cache=True)
+    simulator.set_task_and_groundtruth(task_dir=f"example/track1/{task_set}/tasks", groundtruth_dir=f"example/track1/{task_set}/groundtruth")
 
     # Set the agent and LLM
     simulator.set_agent(MySimulationAgent)
-    simulator.set_llm(GeminiLLM(api_key="GEMINI_API_KEY", model="gemini-2.0-flash"))
+
+    api_key = os.getenv("GEMINI_API_KEY")
+    simulator.set_llm(GeminiLLM(api_key=api_key, model="gemini-2.0-flash"))
 
     # Run the simulation
     # If you don't set the number of tasks, the simulator will run all tasks.
-    outputs = simulator.run_simulation(number_of_tasks=50, enable_threading=True, max_workers=10)
+    outputs = simulator.run_simulation(number_of_tasks=None, enable_threading=True, max_workers=10)
     
     # Evaluate the agent
     evaluation_results = simulator.evaluate()       
-    with open(f'./report/evaluation_results_track1_{task_set}.json', 'w') as f:
+    with open(f'./report/evaluation_results_track1_reduced_voyagerplus_{task_set}.json', 'w') as f:
         json.dump(evaluation_results, f, indent=4)
 
     # Get evaluation history
